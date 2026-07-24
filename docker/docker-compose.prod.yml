@@ -1,6 +1,6 @@
 # AgentCache 生产部署 compose：从 GHCR 拉取镜像，不从源码构建。
 # 用法：docker compose -f docker-compose.prod.yml up -d
-# 与 docker-compose.yml 的区别是用 image: 替代 build:，其余 env / volume / healthcheck 完全一致。
+# 镜像默认通过南京大学 GHCR 镜像加速（国内服务器拉取快），可通过 IMAGE_PREFIX 切回官方源。
 services:
   mysql:
     image: mysql:8.4
@@ -23,7 +23,7 @@ services:
       retries: 10
 
   api:
-    image: ghcr.io/welsione/agentcache-backend:${IMAGE_TAG:-latest}
+    image: ${IMAGE_PREFIX:-ghcr.nju.edu.cn}/welsione/agentcache-backend:${IMAGE_TAG:-latest}
     container_name: agentcache-api
     restart: unless-stopped
     environment:
@@ -42,15 +42,15 @@ services:
       mysql:
         condition: service_healthy
     healthcheck:
-      # /api/auth/login 只接受 POST，用 HEAD 请求 405 也代表服务在运行
-      test: ["CMD-SHELL", "curl -fsSo /dev/null http://127.0.0.1:8080/api/auth/login || curl -fsSo /dev/null -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/auth/login 2>/dev/null | grep -qE '^[245]'"]
+      # /api/auth/login 只接受 POST，用 curl 检查任意 HTTP 响应即可确认服务存活
+      test: ["CMD-SHELL", "curl -fsSo /dev/null http://127.0.0.1:8080/api/auth/login || curl -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/auth/login 2>/dev/null | grep -qE '^[245]'"]
       interval: 15s
       timeout: 5s
       retries: 20
       start_period: 60s
 
   web:
-    image: ghcr.io/welsione/agentcache-frontend:${IMAGE_TAG:-latest}
+    image: ${IMAGE_PREFIX:-ghcr.nju.edu.cn}/welsione/agentcache-frontend:${IMAGE_TAG:-latest}
     container_name: agentcache-web
     restart: unless-stopped
     ports:

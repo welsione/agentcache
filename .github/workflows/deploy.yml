@@ -16,7 +16,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
-    timeout-minutes: 15
+    timeout-minutes: 8
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -69,23 +69,8 @@ jobs:
           set -uo pipefail
           cd /opt/agentcache
 
-          echo "📥 Pulling latest images (with retry)..."
-          PULL_SUCCESS=false
-          for attempt in 1 2 3 4 5; do
-            echo "--- Pull attempt ${attempt} ---"
-            if docker compose -f docker-compose.prod.yml pull 2>&1; then
-              PULL_SUCCESS=true
-              echo "✅ Images pulled successfully"
-              break
-            fi
-            echo "⚠️  Pull attempt ${attempt} failed, retrying in 15s..."
-            sleep 15
-          done
-
-          if [ "$PULL_SUCCESS" != "true" ]; then
-            echo "❌ Failed to pull images after 5 attempts"
-            exit 1
-          fi
+          echo "📥 Pulling latest images..."
+          docker compose -f docker-compose.prod.yml pull
 
           echo "🚀 Starting services..."
           docker compose -f docker-compose.prod.yml up -d --remove-orphans
