@@ -1,0 +1,241 @@
+/**
+ * 全局基础样式 - 苹果风格
+ * 引入顺序: tokens.css → element-plus → element-overrides.css → 本文件
+ */
+@import './tokens.css';
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  min-width: 320px;
+  color: var(--ac-text-primary);
+  background: var(--ac-bg);
+  font-family: var(--ac-font-sans);
+  font-size: var(--ac-text-base);
+  line-height: 1.47;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+a {
+  color: var(--ac-primary);
+  text-decoration: none;
+  transition: color var(--ac-dur-fast) var(--ac-ease-out);
+}
+a:hover {
+  color: var(--ac-primary-hover);
+}
+
+/* ===== 滚动条美化 ===== */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+/* ===== 路由过渡 ===== */
+.page-enter-active {
+  transition: opacity var(--ac-dur) var(--ac-ease-out),
+    transform var(--ac-dur) var(--ac-ease-out);
+}
+.page-leave-active {
+  transition: opacity var(--ac-dur-fast) var(--ac-ease-standard),
+    transform var(--ac-dur-fast) var(--ac-ease-standard);
+}
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+/* ===== 弹窗/抽屉过渡 ===== */
+.dialog-enter-active {
+  transition: opacity var(--ac-dur-slow) var(--ac-ease-out),
+    transform var(--ac-dur-slow) var(--ac-ease-spring-soft);
+}
+.dialog-leave-active {
+  transition: opacity var(--ac-dur) var(--ac-ease-standard),
+    transform var(--ac-dur) var(--ac-ease-standard);
+}
+.dialog-enter-from {
+  opacity: 0;
+  transform: scale(0.96) translateY(10px);
+}
+.dialog-leave-to {
+  opacity: 0;
+  transform: scale(0.98) translateY(4px);
+}
+
+/* ===== 折叠面板过渡 ===== */
+.el-collapse-item__wrap {
+  transition: height var(--ac-dur) var(--ac-ease-out);
+}
+
+/* ===== Focus-visible:键盘导航蓝环 ===== */
+:focus-visible {
+  outline: 2px solid var(--ac-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.el-button:focus-visible {
+  outline: 2px solid var(--ac-primary);
+  outline-offset: 2px;
+}
+
+/* ===== Reduced motion ===== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .page-enter-active,
+  .page-leave-active {
+    transition: opacity 150ms ease;
+  }
+  .page-enter-from,
+  .page-leave-to {
+    transform: none;
+  }
+  .dialog-enter-from,
+  .dialog-leave-to {
+    transform: none;
+  }
+  .el-card.is-hover-shadow:hover {
+    transform: none;
+  }
+}
+
+/* ===== Reduced transparency ===== */
+@media (prefers-reduced-transparency: reduce) {
+  .el-message {
+    background: #ffffff !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  .el-overlay {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  .el-loading-mask {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}
+
+/* ===== 通用工具类 ===== */
+.ac-glass {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+.ac-glass-heavy {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(40px) saturate(200%);
+  -webkit-backdrop-filter: blur(40px) saturate(200%);
+}
+
+/* ===== 认证页(登录 / 注册 / 改密)统一毛玻璃卡片 ===== */
+.ac-auth {
+  display: grid;
+  min-height: 100vh;
+  padding: 24px;
+  background:
+    radial-gradient(1200px 600px at 50% -10%, rgba(0, 113, 227, 0.08), transparent 60%),
+    radial-gradient(900px 500px at 100% 110%, rgba(90, 200, 250, 0.07), transparent 60%),
+    var(--ac-bg);
+  place-items: center;
+}
+.ac-auth__card.el-card {
+  width: min(440px, 100%);
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: var(--ac-radius-xl);
+  box-shadow: var(--ac-shadow-xl);
+  animation: ac-auth-in var(--ac-dur-slower) var(--ac-ease-spring-soft) both;
+}
+.ac-auth__card .el-card__body {
+  padding: 36px;
+}
+.ac-auth__heading {
+  margin-bottom: 28px;
+  text-align: center;
+}
+.ac-auth__title {
+  margin: 0;
+  color: var(--ac-text-primary);
+  font-size: var(--ac-text-3xl);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+.ac-auth__subtitle {
+  margin: 8px 0 0;
+  color: var(--ac-text-secondary);
+  font-size: var(--ac-text-sm);
+}
+.ac-auth__button {
+  width: 100%;
+}
+.ac-auth__hint {
+  margin-top: 20px;
+}
+@keyframes ac-auth-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ===== el-result(404 等)苹果化 ===== */
+.el-result__icon svg {
+  width: 64px;
+  height: 64px;
+}
+.el-result__title {
+  font-size: var(--ac-text-2xl);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--ac-text-primary);
+}
+.el-result__subtitle {
+  color: var(--ac-text-secondary);
+}

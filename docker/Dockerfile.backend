@@ -1,0 +1,19 @@
+FROM maven:3.9-eclipse-temurin-17 AS build
+WORKDIR /workspace
+
+# Cache dependencies first
+COPY pom.xml pom.xml
+COPY backend/pom.xml backend/pom.xml
+COPY backend/server backend/server
+COPY cli cli
+RUN mvn -B -ntp -pl backend/server -am -DskipTests package
+
+FROM eclipse-temurin:17-jre-jammy
+RUN useradd -ms /bin/bash agentcache && \
+    mkdir -p /data/files && \
+    chown -R agentcache:agentcache /data
+WORKDIR /app
+COPY --from=build /workspace/backend/server/target/server-*.jar /app/app.jar
+USER agentcache
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]

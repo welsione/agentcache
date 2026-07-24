@@ -1,0 +1,98 @@
+/**
+ * Apple 风格设计令牌
+ * 集中定义颜色、圆角、阴影、间距、字体、动效曲线与时长。
+ * 所有组件优先引用这些变量,保证视觉一致性。
+ */
+:root {
+  /* ===== 中性色阶 ===== */
+  --ac-bg: #f5f5f7;            /* 应用背景 */
+  --ac-bg-elevated: #ffffff;   /* 卡片 / 浮层表面 */
+  --ac-bg-subtle: #fbfbfd;     /* 次级表面(侧栏等) */
+  --ac-bg-hover: rgba(0, 0, 0, 0.04);
+  --ac-bg-active: rgba(0, 0, 0, 0.06);
+
+  --ac-text-primary: #1d1d1f;
+  --ac-text-secondary: #6e6e73;
+  --ac-text-tertiary: #86868b;
+  --ac-text-quaternary: #aeaeb2;
+
+  --ac-border: rgba(0, 0, 0, 0.08);
+  --ac-border-strong: rgba(0, 0, 0, 0.12);
+  --ac-divider: rgba(0, 0, 0, 0.06);
+
+  /* ===== 品牌色与语义色 ===== */
+  --ac-primary: #0071e3;
+  --ac-primary-hover: #0077ed;
+  --ac-primary-pressed: #006edb;
+  --ac-primary-soft: rgba(0, 113, 227, 0.1);
+  --ac-primary-softer: rgba(0, 113, 227, 0.06);
+
+  --ac-success: #34c759;
+  --ac-success-soft: rgba(52, 199, 89, 0.12);
+  --ac-success-text: #1d8a3f;
+  --ac-warning: #ff9f0a;
+  --ac-warning-soft: rgba(255, 159, 10, 0.12);
+  --ac-warning-text: #b76b00;
+  --ac-danger: #ff3b30;
+  --ac-danger-soft: rgba(255, 59, 48, 0.1);
+  --ac-danger-text: #c8281e;
+  --ac-info: #5ac8fa;
+  --ac-info-soft: rgba(90, 200, 250, 0.12);
+
+  /* ===== 圆角 ===== */
+  --ac-radius-sm: 8px;
+  --ac-radius-md: 12px;
+  --ac-radius-lg: 16px;
+  --ac-radius-xl: 22px;
+  --ac-radius-pill: 980px;
+
+  /* ===== 阴影(多层柔和,非纯黑) ===== */
+  --ac-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --ac-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+  --ac-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0, 0, 0, 0.03);
+  --ac-shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.08), 0 4px 8px rgba(0, 0, 0, 0.04);
+  --ac-shadow-xl: 0 24px 48px rgba(0, 0, 0, 0.1), 0 8px 16px rgba(0, 0, 0, 0.05);
+  --ac-shadow-focus: 0 0 0 4px var(--ac-primary-soft);
+
+  /* ===== 间距(8 的倍数为主) ===== */
+  --ac-space-1: 4px;
+  --ac-space-2: 8px;
+  --ac-space-3: 12px;
+  --ac-space-4: 16px;
+  --ac-space-5: 20px;
+  --ac-space-6: 24px;
+  --ac-space-7: 32px;
+  --ac-space-8: 40px;
+  --ac-space-9: 56px;
+
+  /* ===== 字体 ===== */
+  --ac-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    "PingFang SC", "Helvetica Neue", "Microsoft YaHei", system-ui, sans-serif;
+  --ac-font-mono: "SF Mono", "JetBrains Mono", ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+
+  --ac-text-xs: 12px;
+  --ac-text-sm: 13px;
+  --ac-text-base: 14px;
+  --ac-text-md: 15px;
+  --ac-text-lg: 17px;
+  --ac-text-xl: 20px;
+  --ac-text-2xl: 24px;
+  --ac-text-3xl: 30px;
+
+  /* ===== 动效曲线(模拟 spring) ===== */
+  --ac-ease-out: cubic-bezier(0.16, 1, 0.3, 1);          /* 苹果标准减速 */
+  --ac-ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ac-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);   /* 轻微回弹:进场 / 悬浮 */
+  --ac-ease-spring-soft: cubic-bezier(0.22, 1, 0.36, 1);  /* 平滑无回弹 */
+
+  --ac-dur-fast: 150ms;
+  --ac-dur: 250ms;
+  --ac-dur-slow: 400ms;
+  --ac-dur-slower: 550ms;
+
+  /* ===== 层级 ===== */
+  --ac-z-sticky: 100;
+  --ac-z-header: 200;
+  --ac-z-dropdown: 1000;
+  --ac-z-modal: 2000;
+}

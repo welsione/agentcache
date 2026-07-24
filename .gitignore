@@ -1,0 +1,12 @@
+/.claude/
+/.idea/
+**/target/
+**/node_modules/
+**/dist/
+/data/
+*.log
+*.iml
+.env
+docker/.env
+/docs/superpowers/
+/docs/plan/

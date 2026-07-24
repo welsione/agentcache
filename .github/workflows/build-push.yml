@@ -1,0 +1,276 @@
+name: Build and Push Images
+
+# 推送 master / 打 tag / 手动触发时，构建 backend 与 frontend 镜像并推送到 GHCR。
+# 服务器（局域网）通过 docker compose pull 拉取镜像完成部署，GitHub 不需要反向访问服务器。
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  BACKEND_IMAGE: ghcr.io/welsione/agentcache-backend
+  FRONTEND_IMAGE: ghcr.io/welsione/agentcache-frontend
+
+jobs:
+  build-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Build backend jar
+        # Dockerfile.backend 会 COPY backend/server/target/*.jar，所以必须先打 jar。
+        # 测试在独立 workflow 跑，这里跳过以保证镜像构建稳定。
+        run: mvn -B -ntp clean package -DskipTests
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.BACKEND_IMAGE }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=master-,format=short
+            type=ref,event=tag
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.backend
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.FRONTEND_IMAGE }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=master-,format=short
+            type=ref,event=tag
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.frontend
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VITE_API_BASE_URL=
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  release:
+    needs: [build-backend, build-frontend]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master'
+    # 防止并发 release 算出相同版本号导致 tag 冲突；不取消进行中的运行，避免 tag 已推但 release 未建
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: false
+    # release job 需要打 tag + 创建 release，单独授予 contents: write（最小权限，build job 仍为顶层 read）
+    permissions:
+      contents: write
+    env:
+      HAS_KEY: ${{ secrets.LLM_API_KEY != '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calculate next version
+        id: version
+        run: |
+          # 过滤掉 pre-release tag（如 v1.0.0-rc1），只取标准语义化版本，避免版本号倒退
+          LATEST=$(git tag --list 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+          if [ -z "$LATEST" ]; then
+            NEW_TAG="v0.1.0"
+          else
+            IFS='.' read -r MAJOR MINOR PATCH <<< "${LATEST#v}"
+            NEW_TAG="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+          fi
+          echo "new_tag=${NEW_TAG}" >> "$GITHUB_OUTPUT"
+          echo "latest_tag=${LATEST:-none}" >> "$GITHUB_OUTPUT"
+          echo "Next version: ${NEW_TAG} (previous: ${LATEST:-none})"
+
+      - name: Skip if tag already exists
+        id: check_tag
+        env:
+          NEW_TAG: ${{ steps.version.outputs.new_tag }}
+        run: |
+          if git rev-parse "$NEW_TAG" >/dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Tag $NEW_TAG already exists, skipping release"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Collect changes
+        if: steps.check_tag.outputs.skip != 'true'
+        id: changes
+        env:
+          LATEST_TAG: ${{ steps.version.outputs.latest_tag }}
+        run: |
+          LATEST="$LATEST_TAG"
+          if [ "$LATEST" = "none" ]; then
+            # 首次发布：用首个 commit 作为 diff 起点，避免 HEAD~50 在 commit 不足时报错
+            FIRST_COMMIT=$(git rev-list --max-parents=0 HEAD | tail -1)
+            COMMIT_LIST=$(git log --pretty=format:"%s" | head -50)
+            git diff --no-color "${FIRST_COMMIT}" HEAD > /tmp/release-diff.txt || true
+          else
+            COMMIT_LIST=$(git log --pretty=format:"%s" "${LATEST}..HEAD")
+            git diff --no-color "${LATEST}..HEAD" > /tmp/release-diff.txt || true
+          fi
+          EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+          echo "commit_list<<${EOF}" >> "$GITHUB_OUTPUT"
+          echo "${COMMIT_LIST}" >> "$GITHUB_OUTPUT"
+          echo "${EOF}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node.js
+        if: steps.check_tag.outputs.skip != 'true' && env.HAS_KEY == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Anthropic SDK
+        if: steps.check_tag.outputs.skip != 'true' && env.HAS_KEY == 'true'
+        run: |
+          cd .github/scripts
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund @anthropic-ai/sdk
+
+      - name: Generate AI release notes
+        if: steps.check_tag.outputs.skip != 'true' && env.HAS_KEY == 'true'
+        id: ai_notes
+        working-directory: .github/scripts
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          BASE_URL: ${{ vars.LLM_BASE_URL }}
+          MODEL_ID: ${{ vars.LLM_MODEL_ID }}
+          NEW_TAG: ${{ steps.version.outputs.new_tag }}
+          COMMIT_LIST: ${{ steps.changes.outputs.commit_list }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          OUTPUT=$(node release-notes.mjs 2>&1) || true
+          echo "$OUTPUT"
+          NOTES_PATH=$(echo "$OUTPUT" | grep -E '^(NOTES_FILE|FALLBACK_NOTES)=' | head -1 | cut -d= -f2-)
+          if [ -n "$NOTES_PATH" ] && [ -f "$NOTES_PATH" ]; then
+            echo "notes_file=${NOTES_PATH}" >> "$GITHUB_OUTPUT"
+          else
+            echo "## 变更列表" > /tmp/release-notes-fallback.md
+            echo "" >> /tmp/release-notes-fallback.md
+            printf '%s\n' "$COMMIT_LIST" | while IFS= read -r line; do
+              [ -n "$line" ] && echo "- ${line}" >> /tmp/release-notes-fallback.md
+            done
+            echo "notes_file=/tmp/release-notes-fallback.md" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate fallback release notes (no API key)
+        if: steps.check_tag.outputs.skip != 'true' && env.HAS_KEY != 'true'
+        id: fallback_notes
+        env:
+          COMMIT_LIST: ${{ steps.changes.outputs.commit_list }}
+        run: |
+          echo "## 变更列表" > /tmp/release-notes-fallback.md
+          echo "" >> /tmp/release-notes-fallback.md
+          printf '%s\n' "$COMMIT_LIST" | while IFS= read -r line; do
+            [ -n "$line" ] && echo "- ${line}" >> /tmp/release-notes-fallback.md
+          done
+          echo "notes_file=/tmp/release-notes-fallback.md" >> "$GITHUB_OUTPUT"
+
+      - name: Append container image links
+        if: steps.check_tag.outputs.skip != 'true'
+        id: append_images
+        env:
+          NEW_TAG: ${{ steps.version.outputs.new_tag }}
+          NOTES_FILE_IN: ${{ steps.ai_notes.outputs.notes_file || steps.fallback_notes.outputs.notes_file }}
+          BACKEND_IMAGE: ${{ env.BACKEND_IMAGE }}
+          FRONTEND_IMAGE: ${{ env.FRONTEND_IMAGE }}
+        run: |
+          # 镜像 tag 与 release 版本号一致：release job 创建 NEW_TAG 后，tag push 会触发
+          # build job（type=ref,event=tag）给两个镜像打上 v0.1.x tag 推到 GHCR。
+          NOTES_FILE="${NOTES_FILE_IN:-/tmp/release-notes-container.md}"
+          [ -f "$NOTES_FILE" ] || : > "$NOTES_FILE"
+          {
+            echo ""
+            echo "## 容器镜像"
+            echo ""
+            echo "镜像 tag 与本 release 版本号一致（\`${NEW_TAG}\`），tag push 触发构建后可在 GHCR 拉取："
+            echo ""
+            echo "- 后端：\`${BACKEND_IMAGE}:${NEW_TAG}\`"
+            echo "- 前端：\`${FRONTEND_IMAGE}:${NEW_TAG}\`"
+            echo ""
+            echo "拉取："
+            echo ""
+            echo '```bash'
+            echo "docker pull ${BACKEND_IMAGE}:${NEW_TAG}"
+            echo "docker pull ${FRONTEND_IMAGE}:${NEW_TAG}"
+            echo '```'
+          } >> "$NOTES_FILE"
+          echo "notes_file=${NOTES_FILE}" >> "$GITHUB_OUTPUT"
+
+      - name: Create tag and release
+        if: steps.check_tag.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEW_TAG: ${{ steps.version.outputs.new_tag }}
+          NOTES_FILE: ${{ steps.append_images.outputs.notes_file }}
+        run: |
+          if [ ! -f "$NOTES_FILE" ]; then
+            NOTES_FILE="/dev/null"
+          fi
+          git tag "$NEW_TAG"
+          git push origin "$NEW_TAG"
+          gh release create "$NEW_TAG" \
+            --title "$NEW_TAG" \
+            --notes-file "$NOTES_FILE" \
+            --repo "${{ github.repository }}"
+          echo "Created release $NEW_TAG"
