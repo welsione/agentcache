@@ -1,7 +1,7 @@
 name: Deploy to Production
 
 # master 推送且镜像构建完成后，自动部署到线上服务器。
-# 流程：SSH 登录服务器 → 上传 compose 文件 → 拉取最新镜像 → docker compose up -d → 健康检查
+# 流程：SSH 登录服务器 -> 上传 compose 文件 -> 拉取最新镜像 -> docker compose up -d -> 健康检查
 on:
   workflow_run:
     workflows: ["Build and Push Images"]
@@ -16,7 +16,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -47,7 +47,7 @@ jobs:
           AGENTCACHE_CONFIG_KEY=change-me-to-a-32-byte-random-string-minimum
           IMAGE_TAG=latest
           ENV
-            echo "⚠️  .env created with placeholders — edit ${DEPLOY_DIR}/.env to set real secrets"
+            echo "⚠️  .env created with placeholders - edit ${DEPLOY_DIR}/.env to set real secrets"
           fi
           EOF
 
@@ -66,17 +66,32 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
         run: |
           ssh -i ~/.ssh/deploy_key ${DEPLOY_USER}@${DEPLOY_HOST} bash -s << 'EOF'
-          set -euo pipefail
+          set -uo pipefail
           cd /opt/agentcache
 
-          echo "📥 Pulling latest images..."
-          docker compose -f docker-compose.prod.yml pull
+          echo "📥 Pulling latest images (with retry)..."
+          PULL_SUCCESS=false
+          for attempt in 1 2 3 4 5; do
+            echo "--- Pull attempt ${attempt} ---"
+            if docker compose -f docker-compose.prod.yml pull 2>&1; then
+              PULL_SUCCESS=true
+              echo "✅ Images pulled successfully"
+              break
+            fi
+            echo "⚠️  Pull attempt ${attempt} failed, retrying in 15s..."
+            sleep 15
+          done
+
+          if [ "$PULL_SUCCESS" != "true" ]; then
+            echo "❌ Failed to pull images after 5 attempts"
+            exit 1
+          fi
 
           echo "🚀 Starting services..."
           docker compose -f docker-compose.prod.yml up -d --remove-orphans
 
           echo "⏳ Waiting for services to be ready..."
-          sleep 10
+          sleep 15
 
           echo "📊 Container status:"
           docker compose -f docker-compose.prod.yml ps
@@ -84,20 +99,20 @@ jobs:
           # Health check (up to 120s)
           echo "🏥 Health check..."
           for i in $(seq 1 24); do
-            ALL_HEALTHY=true
+            UNHEALTHY=""
             while IFS= read -r line; do
-              STATUS=$(echo "$line" | jq -r '.Health // empty' 2>/dev/null || true)
-              if [ "$STATUS" != "healthy" ] && [ -n "$STATUS" ]; then
-                ALL_HEALTHY=false
-                break
+              NAME=$(echo "$line" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('Name',''))" 2>/dev/null)
+              HEALTH=$(echo "$line" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('Health',''))" 2>/dev/null)
+              if [ -n "$HEALTH" ] && [ "$HEALTH" != "healthy" ]; then
+                UNHEALTHY="${UNHEALTHY} ${NAME}(${HEALTH})"
               fi
             done < <(docker compose -f docker-compose.prod.yml ps --format json 2>/dev/null)
 
-            if [ "$ALL_HEALTHY" = "true" ]; then
+            if [ -z "$UNHEALTHY" ]; then
               echo "✅ All services healthy"
               exit 0
             fi
-            echo "  Waiting... (${i}/24)"
+            echo "  Waiting... (${i}/24) unhealthy:${UNHEALTHY}"
             sleep 5
           done
 
