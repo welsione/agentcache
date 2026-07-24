@@ -114,9 +114,10 @@ jobs:
     concurrency:
       group: release-${{ github.ref }}
       cancel-in-progress: false
-    # release job 需要打 tag + 创建 release，单独授予 contents: write（最小权限，build job 仍为顶层 read）
+    # release job 需要打 tag + 创建 release + 给镜像补打版本 tag，单独授予权限（最小权限，build job 仍为顶层 read）
     permissions:
       contents: write
+      packages: write
     env:
       HAS_KEY: ${{ secrets.LLM_API_KEY != '' }}
     steps:

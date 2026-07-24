@@ -1,0 +1,111 @@
+name: Deploy to Production
+
+# master 推送且镜像构建完成后，自动部署到线上服务器。
+# 流程：SSH 登录服务器 → 上传 compose 文件 → 拉取最新镜像 → docker compose up -d → 健康检查
+on:
+  workflow_run:
+    workflows: ["Build and Push Images"]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Ensure deploy directory
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key ${DEPLOY_USER}@${DEPLOY_HOST} bash -s << 'EOF'
+          set -euo pipefail
+          DEPLOY_DIR="/opt/agentcache"
+          mkdir -p "${DEPLOY_DIR}"
+
+          # 首次部署创建 .env（已存在则跳过，避免覆盖密钥）
+          if [ ! -f "${DEPLOY_DIR}/.env" ]; then
+            cat > "${DEPLOY_DIR}/.env" << 'ENV'
+          MYSQL_ROOT_PASSWORD=change-me-strong-root-password
+          MYSQL_PASSWORD=change-me-strong-app-password
+          JWT_SECRET=change-me-to-a-32-byte-random-string-minimum
+          AGENTCACHE_CONFIG_KEY=change-me-to-a-32-byte-random-string-minimum
+          IMAGE_TAG=latest
+          ENV
+            echo "⚠️  .env created with placeholders — edit ${DEPLOY_DIR}/.env to set real secrets"
+          fi
+          EOF
+
+      - name: Upload compose file
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          scp -i ~/.ssh/deploy_key \
+            docker/docker-compose.prod.yml \
+            ${DEPLOY_USER}@${DEPLOY_HOST}:/opt/agentcache/docker-compose.prod.yml
+
+      - name: Pull and deploy
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key ${DEPLOY_USER}@${DEPLOY_HOST} bash -s << 'EOF'
+          set -euo pipefail
+          cd /opt/agentcache
+
+          echo "📥 Pulling latest images..."
+          docker compose -f docker-compose.prod.yml pull
+
+          echo "🚀 Starting services..."
+          docker compose -f docker-compose.prod.yml up -d --remove-orphans
+
+          echo "⏳ Waiting for services to be ready..."
+          sleep 10
+
+          echo "📊 Container status:"
+          docker compose -f docker-compose.prod.yml ps
+
+          # Health check (up to 120s)
+          echo "🏥 Health check..."
+          for i in $(seq 1 24); do
+            ALL_HEALTHY=true
+            while IFS= read -r line; do
+              STATUS=$(echo "$line" | jq -r '.Health // empty' 2>/dev/null || true)
+              if [ "$STATUS" != "healthy" ] && [ -n "$STATUS" ]; then
+                ALL_HEALTHY=false
+                break
+              fi
+            done < <(docker compose -f docker-compose.prod.yml ps --format json 2>/dev/null)
+
+            if [ "$ALL_HEALTHY" = "true" ]; then
+              echo "✅ All services healthy"
+              exit 0
+            fi
+            echo "  Waiting... (${i}/24)"
+            sleep 5
+          done
+
+          echo "⚠️  Some services not healthy within 120s"
+          docker compose -f docker-compose.prod.yml ps
+          exit 1
+          EOF
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
